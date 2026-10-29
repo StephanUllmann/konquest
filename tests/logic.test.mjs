@@ -154,6 +154,28 @@ test("a missing helper counts as Idle: the Knights stop where they are", () => {
   assert.equal(view.animation, "idle");
 });
 
+test("a tick long after the previous one counts as Idle, even when the helper says fencing", () => {
+  // As after suspend, or after the widget was not running: the saved Duel's last tick is old.
+  const idle = tickEverySecond(startDuel(), T0, 60);
+  const resumed = tick(JSON.parse(JSON.stringify(idle)), T0 + 11 * MINUTE, "fencing");
+  const view = layout(resumed, T0 + 11 * MINUTE, WIDTH);
+  assert.equal(view.knightsX, WIDTH);
+  assert.equal(view.animation, "idle");
+  assert.equal(view.text, "En garde");
+  // The next one-second tick is Fencing again.
+  assert.equal(layout(tick(resumed, T0 + 11 * MINUTE + 1000, "fencing"), T0 + 11 * MINUTE + 1000, WIDTH).text, "");
+});
+
+test("a Duel whose Finish time passed while off reaches Touché on its first tick, with the Knights where they were", () => {
+  const fenced = tickEverySecond(tickEverySecond(startDuel(30), T0, 60), T0 + MINUTE, 60, "fencing");
+  const before = layout(fenced, T0 + 2 * MINUTE, WIDTH);
+  const resumed = tick(JSON.parse(JSON.stringify(fenced)), T0 + 3 * 60 * MINUTE, "fencing");
+  const view = layout(resumed, T0 + 3 * 60 * MINUTE, WIDTH);
+  assert.equal(view.phase, "touche");
+  assert.equal(view.text, "Touché");
+  assert.equal(view.knightsX, before.knightsX);
+});
+
 test("the Knights never pass the Lightning, whatever the ticks", () => {
   // A small seeded generator (mulberry32), so a failure can be reproduced.
   let seed = 42;
@@ -168,7 +190,8 @@ test("the Knights never pass the Lightning, whatever the ticks", () => {
     let duel = startDuel(30);
     let now = T0;
     while (duel.phase === "running") {
-      now += Math.floor(random() * 5 * MINUTE);
+      // Up to 10 s, so some ticks are long enough to count as Idle and the rest can fence.
+      now += Math.floor(random() * 10 * 1000);
       duel = tick(duel, now, words[Math.floor(random() * 3)]);
       const view = layout(duel, now, WIDTH);
       assert.ok(view.knightsX >= view.lightningX, `run ${run}: Knights at ${view.knightsX}, Lightning at ${view.lightningX}`);

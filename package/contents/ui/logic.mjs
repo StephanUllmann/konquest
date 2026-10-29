@@ -4,6 +4,8 @@
 
 // While Fencing, the Gap halves over this much clock time.
 const HALVING = 2 * 60 * 1000;
+// Ticks come every second; a longer wait means suspend or downtime, which counts as Idle.
+const SUSPEND_THRESHOLD = 5 * 1000;
 
 // Object.assign, not spread: Plasma's QML engine rejects object spread syntax.
 const withPhase = (duel, phase) => Object.assign({}, duel, { phase });
@@ -24,8 +26,10 @@ export function step(duel, event) {
     case "tick": {
       if (duel?.phase !== "running") return duel;
       if (event.now >= duel.finish) return withPhase(duel, "touche");
-      // helper is the state file's word, or "missing"; anything but "fencing" counts as Idle.
-      const fencing = event.helper === "fencing";
+      // event.helper is the state file's word, or "missing"; anything but "fencing" counts as Idle,
+      // and so does a whole tick after suspend or downtime, whatever the word.
+      const helper = event.now - duel.lastTick > SUSPEND_THRESHOLD ? "idle" : event.helper;
+      const fencing = helper === "fencing";
       const gap = duel.lastTick - duel.start - duel.covered;
       // While Idle covered stays put, so the Gap grows at clock speed.
       const covered = fencing
@@ -34,7 +38,7 @@ export function step(duel, event) {
       return Object.assign({}, duel, {
         covered,
         lastTick: event.now,
-        helper: event.helper,
+        helper,
         enGarde: duel.enGarde && !fencing,
       });
     }
