@@ -5,6 +5,15 @@
 // While Fencing, the Gap halves over this much clock time.
 const HALVING = 2 * 60 * 1000;
 
+// Scheduled Strikes come this often, give or take up to STRIKE_JITTER, so they have no fixed rhythm.
+const STRIKE_EVERY = 3 * 60 * 1000;
+const STRIKE_JITTER = 15 * 1000;
+
+const scheduleStrike = (now, random) => now + STRIKE_EVERY + (random * 2 - 1) * STRIKE_JITTER;
+
+// Every Strike moves the Scorch mark to the elapsed clock time, which stops at the Finish time.
+const strike = (duel, now) => Object.assign({}, duel, { scorch: Math.min(now, duel.finish) - duel.start });
+
 // Object.assign, not spread: Plasma's QML engine rejects object spread syntax.
 const withPhase = (duel, phase) => Object.assign({}, duel, { phase });
 
@@ -20,10 +29,13 @@ export function step(duel, event) {
         lastTick: event.now,
         phase: "running",
         enGarde: true,
+        nextStrike: scheduleStrike(event.now, event.random),
+        // Clock time of the latest Strike; null until the first one.
+        scorch: null,
       };
     case "tick": {
       if (duel?.phase !== "running") return duel;
-      if (event.now >= duel.finish) return withPhase(duel, "touche");
+      if (event.now >= duel.finish) return strike(withPhase(duel, "touche"), event.now);
       // helper is the state file's word, or "missing"; anything but "fencing" counts as Idle.
       const fencing = event.helper === "fencing";
       const gap = duel.lastTick - duel.start - duel.covered;
@@ -31,13 +43,19 @@ export function step(duel, event) {
       const covered = fencing
         ? event.now - duel.start - gap * Math.pow(0.5, Math.max(0, event.now - duel.lastTick) / HALVING)
         : duel.covered;
-      return Object.assign({}, duel, {
+      const next = Object.assign({}, duel, {
         covered,
         lastTick: event.now,
         helper: event.helper,
         enGarde: duel.enGarde && !fencing,
       });
+      if (event.now < duel.nextStrike) return next;
+      return Object.assign(strike(next, event.now), { nextStrike: scheduleStrike(event.now, event.random) });
     }
+    case "hover":
+      // A Strike right away, off the schedule. From the Finish time on, Touché's Strike is due instead,
+      // and a hover there would leave the Scorch mark unmoved for it, so the widget would not replay the bolt.
+      return duel?.phase === "running" && event.now < duel.finish ? strike(duel, event.now) : duel;
     case "click":
       return duel?.phase === "touche" ? withPhase(duel, "salute") : duel;
     case "abandon":
@@ -61,6 +79,7 @@ export function layout(duel, now, panelWidth) {
     knightsX: x(duel.covered),
     // Clamped so the Lightning sits at the left edge from the Finish time on.
     lightningX: x(Math.min(now - duel.start, total)),
+    scorchX: duel.scorch === null ? null : x(duel.scorch),
     animation:
       { salute: "gesture", walkoff: "walk" }[duel.phase] ??
       (duel.phase === "running" && duel.helper === "fencing" ? "attack" : "idle"),

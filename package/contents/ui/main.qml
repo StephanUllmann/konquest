@@ -83,6 +83,8 @@ PlasmoidItem {
 
         MouseArea {
             anchors.fill: parent
+            hoverEnabled: true
+            onEntered: root.duel = Logic.step(root.duel, { type: "hover", now: Date.now() })
             onClicked: {
                 if (root.duel === null) finishDialog.ask();
                 else root.duel = Logic.step(root.duel, { type: "click" });
@@ -138,12 +140,37 @@ PlasmoidItem {
                     onFinished: root.duel = Logic.step(root.duel, { type: "animationFinished" })
                 }
 
-                Rectangle {
-                    // Plain Lightning marker; the Thunder strip arrives with Strikes (#6).
-                    x: Math.max(0, field.view.lightningX - width)
-                    width: 2
-                    height: parent.height
-                    color: Kirigami.Theme.highlightColor
+                Image {
+                    visible: field.view.scorchX !== null
+                    x: Math.max(0, field.view.scorchX - width / 2)
+                    anchors.bottom: parent.bottom
+                    source: Qt.resolvedUrl("../images/scorch.png")
+                    width: sourceSize.width / Screen.devicePixelRatio
+                    height: sourceSize.height / Screen.devicePixelRatio
+                    smooth: false
+                }
+
+                AnimatedSprite {
+                    id: bolt
+                    // Every Strike moves the Scorch mark, so a change means a Strike just happened.
+                    readonly property var scorch: root.duel?.scorch
+                    // Loose != also skips undefined, which the property holds before its first binding and after the Duel ends.
+                    onScorchChanged: if (scorch != null) restart()
+                    // Hidden until the first Strike and again once the strip has played.
+                    visible: running
+                    running: false
+                    x: Math.max(0, field.view.lightningX - width / 2)
+                    // Hangs from the top; the field's clip crops it at the bottom to the Panel's height.
+                    width: 34 / Screen.devicePixelRatio
+                    height: 68 / Screen.devicePixelRatio
+                    source: Qt.resolvedUrl("../images/thunder.png")
+                    frameWidth: 34
+                    frameHeight: 68
+                    frameCount: 8
+                    frameRate: 16
+                    loops: 1
+                    interpolate: false
+                    smooth: false
                 }
 
                 PlasmaComponents.Label {
@@ -208,7 +235,7 @@ PlasmoidItem {
             onRejected: finishDialog.close()
             onAccepted: {
                 const now = Date.now();
-                const next = Logic.step(root.duel, { type: "start", now: now, finish: picker.value.getTime() });
+                const next = Logic.step(root.duel, { type: "start", now: now, finish: picker.value.getTime(), random: Math.random() });
                 // The logic module refuses a Finish time in the past by returning the Duel unchanged.
                 if (next === root.duel) {
                     picker.statusMessage = i18n("The finish time must be in the future.");
