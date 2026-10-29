@@ -7,6 +7,7 @@ import org.kde.kirigami as Kirigami
 import org.kde.kirigamiaddons.formcard as FormCard
 import org.kde.plasma.components as PlasmaComponents
 import org.kde.plasma.core as PlasmaCore
+import org.kde.plasma.plasma5support as P5Support
 import org.kde.plasma.plasmoid
 
 import "logic.mjs" as Logic
@@ -16,8 +17,37 @@ PlasmoidItem {
 
     property var duel: null
     property double now: Date.now()
+    // The state file's word, read once a second during a Duel.
+    property string helper: "missing"
+    // The helper runs from the start of a Duel until the walk-off begins.
+    readonly property bool helperWanted: duel !== null && duel.phase !== "walkoff"
 
     preferredRepresentation: fullRepresentation
+    toolTipMainText: i18n("Konquest")
+    toolTipSubText: {
+        if (duel === null) return "";
+        if (helperWanted && helper === "missing") return i18n("Typing helper not running");
+        return i18n("Finish time: %1", new Date(duel.finish).toLocaleString(Qt.locale(), Locale.ShortFormat));
+    }
+
+    onHelperWantedChanged: {
+        // Forget the last Duel's word, so it cannot end the next Duel's En garde.
+        helper = helperWanted ? "idle" : "missing";
+        executable.run("systemctl --user " + (helperWanted ? "start" : "stop") + " konquest-keycount");
+    }
+
+    // Runs shell commands; each command is a source name, connected until its output arrives.
+    P5Support.DataSource {
+        id: executable
+        readonly property string readState: 'cat "$XDG_RUNTIME_DIR/konquest/state" 2>/dev/null'
+        engine: "executable"
+        function run(command) { connectSource(command); }
+        onNewData: (sourceName, data) => {
+            // A missing file leaves stdout empty: the helper is not running.
+            if (sourceName === readState) root.helper = data.stdout.trim() || "missing";
+            disconnectSource(sourceName);
+        }
+    }
 
     Plasmoid.contextualActions: [
         PlasmaCore.Action {
@@ -41,8 +71,9 @@ PlasmoidItem {
         running: root.duel !== null
         onTriggered: {
             root.now = Date.now();
-            // Knights stay Idle until the typing helper is wired in (#5).
-            root.duel = Logic.step(root.duel, { type: "tick", now: root.now, helper: "idle", random: Math.random() });
+            // Uses the word read on the previous tick; a second late is fine.
+            root.duel = Logic.step(root.duel, { type: "tick", now: root.now, helper: root.helper, random: Math.random() });
+            executable.run(executable.readState);
         }
     }
 

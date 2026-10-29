@@ -25,10 +25,10 @@ test("a Finish time at or before now is refused and the Duel comes back unchange
   assert.equal(step(duel, { type: "start", now: T0 + MINUTE, finish: T0 }), duel);
 });
 
-const tickEverySecond = (duel, from, seconds) => {
-  for (let s = 1; s <= seconds; s++) {
-    duel = step(duel, { type: "tick", now: from + s * 1000, helper: "idle", random: 0.5 });
-  }
+const tick = (duel, now, helper) => step(duel, { type: "tick", now, helper, random: 0.5 });
+
+const tickEverySecond = (duel, from, seconds, helper = "idle") => {
+  for (let s = 1; s <= seconds; s++) duel = tick(duel, from + s * 1000, helper);
   return duel;
 };
 
@@ -126,4 +126,53 @@ test("Abandon sends the Knights straight to the walk-off without a Salute", () =
     assert.equal(step(walkoff, finished), null);
   }
   assert.equal(step(null, abandon), null);
+});
+
+test("En garde ends on the first Fencing tick, and the Knights attack", () => {
+  const idle = tick(startDuel(), T0 + 1000, "idle");
+  assert.equal(layout(idle, T0 + 1000, WIDTH).text, "En garde");
+  const view = layout(tick(idle, T0 + 2000, "fencing"), T0 + 2000, WIDTH);
+  assert.equal(view.text, "");
+  assert.equal(view.animation, "attack");
+});
+
+test("two minutes of continuous Fencing halve the Gap", () => {
+  const idle = tickEverySecond(startDuel(), T0, 10 * 60);
+  const fenced = tickEverySecond(idle, T0 + 10 * MINUTE, 2 * 60, "fencing");
+  const view = layout(fenced, T0 + 12 * MINUTE, WIDTH);
+  // A 10-minute Gap becomes 5 minutes, so the Knights have covered 7 of the 60 minutes.
+  assert.ok(Math.abs(view.knightsX - 1000 * (1 - 7 / 60)) < 0.5, `knightsX ${view.knightsX}`);
+  assert.equal(view.lightningX, 800);
+});
+
+test("a missing helper counts as Idle: the Knights stop where they are", () => {
+  const fenced = tickEverySecond(tickEverySecond(startDuel(), T0, 60), T0 + MINUTE, 60, "fencing");
+  const before = layout(fenced, T0 + 2 * MINUTE, WIDTH);
+  const missing = tickEverySecond(fenced, T0 + 2 * MINUTE, 60, "missing");
+  const view = layout(missing, T0 + 3 * MINUTE, WIDTH);
+  assert.equal(view.knightsX, before.knightsX);
+  assert.equal(view.animation, "idle");
+});
+
+test("the Knights never pass the Lightning, whatever the ticks", () => {
+  // A small seeded generator (mulberry32), so a failure can be reproduced.
+  let seed = 42;
+  const random = () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const words = ["fencing", "idle", "missing"];
+  for (let run = 0; run < 200; run++) {
+    let duel = startDuel(30);
+    let now = T0;
+    while (duel.phase === "running") {
+      now += Math.floor(random() * 5 * MINUTE);
+      duel = tick(duel, now, words[Math.floor(random() * 3)]);
+      const view = layout(duel, now, WIDTH);
+      assert.ok(view.knightsX >= view.lightningX, `run ${run}: Knights at ${view.knightsX}, Lightning at ${view.lightningX}`);
+      assert.ok(view.knightsX <= WIDTH);
+    }
+  }
 });
