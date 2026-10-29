@@ -1,0 +1,11 @@
+[Unit]
+Description=Konquest typing helper (counts key presses during a Duel)
+Documentation=https://github.com/StephanUllmann/konquest
+
+# Not enabled at login: the Konquest widget starts and stops this unit.
+[Service]
+ExecStart=%h/.local/bin/konquest-keycount
+# A missing state file tells the widget the helper is not running, after a stop or a crash.
+ExecStopPost=/bin/rm -f %t/konquest/state
+# The helper never talks to the network; refuse every non-local socket.
+RestrictAddressFamilies=AF_UNIX
