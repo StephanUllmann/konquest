@@ -54,7 +54,14 @@ PlasmoidItem {
             text: i18n("Start duel…")
             icon.name: "chronometer-start"
             visible: root.duel === null
-            onTriggered: finishDialog.ask()
+            onTriggered: finishDialog.ask(false)
+        },
+        PlasmaCore.Action {
+            text: i18n("Change finish time…")
+            icon.name: "chronometer"
+            // Not once the Salute or walk-off has begun; the logic module refuses it there too.
+            visible: root.duel?.phase === "running" || root.duel?.phase === "touche"
+            onTriggered: finishDialog.ask(true)
         },
         PlasmaCore.Action {
             text: i18n("Abandon duel")
@@ -84,7 +91,7 @@ PlasmoidItem {
         MouseArea {
             anchors.fill: parent
             onClicked: {
-                if (root.duel === null) finishDialog.ask();
+                if (root.duel === null) finishDialog.ask(false);
                 else root.duel = Logic.step(root.duel, { type: "click" });
             }
         }
@@ -174,15 +181,19 @@ PlasmoidItem {
     QQC2.ApplicationWindow {
         id: finishDialog
 
-        function ask() {
-            picker.value = new Date(Date.now() + 60 * 60 * 1000);
+        // Starts a new Duel, or with changing set, changes the running Duel's Finish time.
+        property bool changing: false
+
+        function ask(change) {
+            changing = change;
+            picker.value = new Date(changing ? root.duel.finish : Date.now() + 60 * 60 * 1000);
             picker.minimumDate = new Date();
             picker.statusMessage = "";
             show();
             requestActivate();
         }
 
-        title: i18n("Start duel")
+        title: changing ? i18n("Change finish time") : i18n("Start duel")
         flags: Qt.Dialog
         width: Kirigami.Units.gridUnit * 22
         height: Kirigami.Units.gridUnit * 8
@@ -198,7 +209,7 @@ PlasmoidItem {
 
         footer: QQC2.DialogButtonBox {
             QQC2.Button {
-                text: i18n("Start")
+                text: finishDialog.changing ? i18n("Change") : i18n("Start")
                 QQC2.DialogButtonBox.buttonRole: QQC2.DialogButtonBox.AcceptRole
             }
             QQC2.Button {
@@ -208,7 +219,8 @@ PlasmoidItem {
             onRejected: finishDialog.close()
             onAccepted: {
                 const now = Date.now();
-                const next = Logic.step(root.duel, { type: "start", now: now, finish: picker.value.getTime() });
+                const type = finishDialog.changing ? "changeFinish" : "start";
+                const next = Logic.step(root.duel, { type: type, now: now, finish: picker.value.getTime() });
                 // The logic module refuses a Finish time in the past by returning the Duel unchanged.
                 if (next === root.duel) {
                     picker.statusMessage = i18n("The finish time must be in the future.");

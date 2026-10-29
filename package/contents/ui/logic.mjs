@@ -38,6 +38,12 @@ export function step(duel, event) {
         enGarde: duel.enGarde && !fencing,
       });
     }
+    case "changeFinish":
+      if (!["running", "touche"].includes(duel?.phase) || event.finish <= event.now) return duel;
+      // Only the total changes, so layout rescales everything and the Gap in clock time stays the same.
+      if (duel.phase === "running") return Object.assign({}, duel, { finish: event.finish });
+      // Resuming from Touché: ticks there left lastTick behind, and the wait must count as Idle.
+      return Object.assign({}, duel, { finish: event.finish, phase: "running", lastTick: event.now });
     case "click":
       return duel?.phase === "touche" ? withPhase(duel, "salute") : duel;
     case "abandon":
