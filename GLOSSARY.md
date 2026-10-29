@@ -29,7 +29,7 @@ _Avoid_: Deadline, end time, due time
 The two duelling figures on the Panel. They start at the right edge and, while Fencing, chase the Lightning toward the left. They never pass it.
 
 **Fencing**:
-The Knights' state while the user is typing steadily. Only while Fencing do the Knights move.
+The Knights' state while the user is typing steadily. It starts after 15 key presses within 10 seconds and ends after 20 seconds without a press. Only while Fencing do the Knights move.
 
 **Idle**:
 The Knights' state when the user is not typing. They stay where they are and keep up a resting animation.
@@ -44,7 +44,7 @@ The marker for elapsed clock time. It strikes at the point on the Panel that mat
 _Avoid_: Clock marker, time marker
 
 **Strike**:
-A single flash of Lightning. It happens every few minutes and whenever the user hovers over the widget.
+A single flash of Lightning. It happens every 3 minutes, give or take up to 15 seconds at random so it has no fixed rhythm, and whenever the user hovers over the widget.
 
 **Scorch mark**:
 The small grey burn left on the ground by the most recent Strike. Only one exists at a time; each Strike replaces the previous mark.
