@@ -64,6 +64,8 @@ PlasmoidItem {
             active: root.duel !== null
             sourceComponent: Item {
                 id: field
+                // The Knights walk off the left edge without drawing over the neighbouring widgets.
+                clip: true
 
                 readonly property var view: Logic.layout(root.duel, root.now, width)
                 readonly property var rows: ({ idle: 0, gesture: 1, walk: 2, attack: 3 })
@@ -107,7 +109,7 @@ PlasmoidItem {
 
                 Rectangle {
                     // Plain Lightning marker; the Thunder strip arrives with Strikes (#6).
-                    x: field.view.lightningX - width
+                    x: Math.max(0, field.view.lightningX - width)
                     width: 2
                     height: parent.height
                     color: Kirigami.Theme.highlightColor

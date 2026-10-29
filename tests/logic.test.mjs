@@ -77,6 +77,11 @@ test("the first tick at the Finish time reaches Touché, and later ticks change 
   assert.equal(layout(touche, T0 + 2 * MINUTE, WIDTH).lightningX, 0);
 });
 
+test("a single tick long after the Finish time reaches Touché", () => {
+  const late = step(startDuel(1), { type: "tick", now: T0 + 10 * MINUTE, helper: "idle", random: 0.5 });
+  assert.equal(layout(late, T0 + 10 * MINUTE, WIDTH).phase, "touche");
+});
+
 test("a click on Touché starts the Salute with the gesture row", () => {
   const salute = step(reachTouche(), { type: "click" });
   const view = layout(salute, T0 + MINUTE, WIDTH);
