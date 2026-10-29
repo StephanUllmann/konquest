@@ -255,7 +255,7 @@ test("the Knights never pass the Lightning, whatever the ticks", () => {
   }
 });
 
-const changeFinish = (duel, now, finish) => step(duel, { type: "changeFinish", now, finish });
+const changeFinish = (duel, now, finish) => step(duel, { type: "changeFinish", now, finish, random: 0.5 });
 
 test("changing the Finish time rescales the Knights, the Lightning and the Scorch mark together, keeping the Gap in clock time", () => {
   const now = T0 + 12 * MINUTE;
@@ -299,4 +299,15 @@ test("moving the Finish time later during Touché resumes the Duel, and the wait
   const fenced = layout(tick(resumed, now + 1000, "fencing"), now + 1000, WIDTH);
   assert.equal(fenced.phase, "running");
   assert.ok(fenced.knightsX > 995, `knightsX ${fenced.knightsX}`);
+});
+
+test("a Duel resumed from Touché starts Idle with a fresh Strike schedule", () => {
+  const now = T0 + 2 * MINUTE;
+  const touche = tickEverySecond(startDuel(1), T0, 60, "fencing");
+  const resumed = changeFinish(touche, now, T0 + 30 * MINUTE);
+  assert.equal(layout(resumed, now, WIDTH).animation, "idle");
+  // The schedule left over from before Touché is long past; the next Strike is 3 minutes after the change.
+  const ticked = tick(resumed, now + SECOND, "idle");
+  assert.equal(ticked.scorch, touche.scorch);
+  assert.equal(ticked.nextStrike, now + 3 * MINUTE);
 });
