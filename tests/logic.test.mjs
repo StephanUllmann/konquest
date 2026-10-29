@@ -60,3 +60,70 @@ test("a saved Duel survives a JSON round trip and keeps working", () => {
 test("with no Duel there is nothing to draw", () => {
   assert.deepEqual(layout(null, T0, WIDTH), { phase: "none", text: "" });
 });
+
+const reachTouche = () => tickEverySecond(startDuel(1), T0, 60);
+
+test("the first tick at the Finish time reaches Touché, and later ticks change nothing", () => {
+  const justBefore = tickEverySecond(startDuel(1), T0, 59);
+  assert.equal(layout(justBefore, T0 + 59 * 1000, WIDTH).phase, "running");
+  const touche = reachTouche();
+  const view = layout(touche, T0 + MINUTE, WIDTH);
+  assert.equal(view.phase, "touche");
+  assert.equal(view.text, "Touché");
+  assert.equal(view.animation, "idle");
+  assert.equal(view.knightsX, WIDTH);
+  assert.equal(view.lightningX, 0);
+  assert.deepEqual(tickEverySecond(touche, T0 + MINUTE, 30), touche);
+  assert.equal(layout(touche, T0 + 2 * MINUTE, WIDTH).lightningX, 0);
+});
+
+test("a single tick long after the Finish time reaches Touché", () => {
+  const late = step(startDuel(1), { type: "tick", now: T0 + 10 * MINUTE, helper: "idle", random: 0.5 });
+  assert.equal(layout(late, T0 + 10 * MINUTE, WIDTH).phase, "touche");
+});
+
+test("a click on Touché starts the Salute with the gesture row", () => {
+  const salute = step(reachTouche(), { type: "click" });
+  const view = layout(salute, T0 + MINUTE, WIDTH);
+  assert.equal(view.phase, "salute");
+  assert.equal(view.animation, "gesture");
+  assert.equal(view.text, "");
+});
+
+test("clicks outside Touché do nothing", () => {
+  const running = startDuel();
+  assert.equal(step(running, { type: "click" }), running);
+  assert.equal(step(null, { type: "click" }), null);
+  const salute = step(reachTouche(), { type: "click" });
+  assert.equal(step(salute, { type: "click" }), salute);
+});
+
+const finished = { type: "animationFinished" };
+
+test("after the Salute the Knights walk off, and after the walk-off there is no Duel", () => {
+  const walkoff = step(step(reachTouche(), { type: "click" }), finished);
+  const view = layout(walkoff, T0 + MINUTE, WIDTH);
+  assert.equal(view.phase, "walkoff");
+  assert.equal(view.animation, "walk");
+  assert.equal(view.text, "");
+  assert.equal(step(walkoff, finished), null);
+});
+
+test("animation finished outside the Salute and walk-off does nothing", () => {
+  const running = startDuel();
+  assert.equal(step(running, finished), running);
+  const touche = reachTouche();
+  assert.equal(step(touche, finished), touche);
+  assert.equal(step(null, finished), null);
+});
+
+test("Abandon sends the Knights straight to the walk-off without a Salute", () => {
+  const abandon = { type: "abandon" };
+  for (const duel of [startDuel(), reachTouche(), step(reachTouche(), { type: "click" })]) {
+    const walkoff = step(duel, abandon);
+    assert.equal(layout(walkoff, T0 + MINUTE, WIDTH).phase, "walkoff");
+    assert.equal(step(walkoff, abandon), walkoff);
+    assert.equal(step(walkoff, finished), null);
+  }
+  assert.equal(step(null, abandon), null);
+});

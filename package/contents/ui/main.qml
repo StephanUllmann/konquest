@@ -25,6 +25,12 @@ PlasmoidItem {
             icon.name: "chronometer-start"
             visible: root.duel === null
             onTriggered: finishDialog.ask()
+        },
+        PlasmaCore.Action {
+            text: i18n("Abandon duel")
+            icon.name: "process-stop"
+            visible: root.duel !== null
+            onTriggered: root.duel = Logic.step(root.duel, { type: "abandon" })
         }
     ]
 
@@ -46,7 +52,10 @@ PlasmoidItem {
 
         MouseArea {
             anchors.fill: parent
-            onClicked: if (root.duel === null) finishDialog.ask()
+            onClicked: {
+                if (root.duel === null) finishDialog.ask();
+                else root.duel = Logic.step(root.duel, { type: "click" });
+            }
         }
 
         // Only loaded during a Duel, so the empty widget draws and animates nothing.
@@ -55,15 +64,21 @@ PlasmoidItem {
             active: root.duel !== null
             sourceComponent: Item {
                 id: field
+                // The Knights walk off the left edge without drawing over the neighbouring widgets.
+                clip: true
 
                 readonly property var view: Logic.layout(root.duel, root.now, width)
                 readonly property var rows: ({ idle: 0, gesture: 1, walk: 2, attack: 3 })
                 readonly property int frameSize: 32
                 // One sprite pixel per physical pixel.
                 readonly property real spriteSize: frameSize / Screen.devicePixelRatio
+                // How far the Knights have walked left during the walk-off.
+                property real walked: 0
 
                 component Knight: AnimatedSprite {
+                    id: knight
                     property int firstRow
+                    property bool facingLeft
                     width: field.spriteSize
                     height: field.spriteSize
                     anchors.bottom: parent.bottom
@@ -73,13 +88,28 @@ PlasmoidItem {
                     frameCount: 10
                     frameY: (firstRow + field.rows[field.view.animation]) * field.frameSize
                     frameRate: 8
+                    // The gesture row plays once for the Salute; every other row loops.
+                    loops: field.view.animation === "gesture" ? 1 : AnimatedSprite.Infinite
                     interpolate: false
                     smooth: false
+                    // The sheet faces right; mirror to face left.
+                    transform: Scale { origin.x: knight.width / 2; xScale: knight.facingLeft ? -1 : 1 }
+                    onFrameYChanged: restart()
+                }
+
+                NumberAnimation {
+                    target: field
+                    property: "walked"
+                    // Until the right Knight is off the left edge; always 5 s, however far that is.
+                    to: field.view.knightsX
+                    duration: 5000
+                    running: field.view.phase === "walkoff"
+                    onFinished: root.duel = Logic.step(root.duel, { type: "animationFinished" })
                 }
 
                 Rectangle {
                     // Plain Lightning marker; the Thunder strip arrives with Strikes (#6).
-                    x: field.view.lightningX - width
+                    x: Math.max(0, field.view.lightningX - width)
                     width: 2
                     height: parent.height
                     color: Kirigami.Theme.highlightColor
@@ -94,15 +124,17 @@ PlasmoidItem {
                 Knight {
                     id: leftKnight
                     firstRow: 0
+                    facingLeft: field.view.phase === "walkoff"
                     x: rightKnight.x - width
                 }
 
                 Knight {
                     id: rightKnight
                     firstRow: 5
-                    x: field.view.knightsX - width
-                    // The sheet faces right; mirror so the Knights face each other.
-                    transform: Scale { origin.x: rightKnight.width / 2; xScale: -1 }
+                    facingLeft: true
+                    x: field.view.knightsX - width - field.walked
+                    // Only one Knight reports the end of the gesture row, so the Salute advances once.
+                    onFinished: root.duel = Logic.step(root.duel, { type: "animationFinished" })
                 }
             }
         }
