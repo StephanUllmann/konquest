@@ -229,3 +229,49 @@ test("the Knights never pass the Lightning, whatever the ticks", () => {
     }
   }
 });
+
+const changeFinish = (duel, now, finish) => step(duel, { type: "changeFinish", now, finish });
+
+test("changing the Finish time rescales the Knights, the Lightning and the Scorch mark together, keeping the Gap in clock time", () => {
+  const now = T0 + 12 * MINUTE;
+  const fenced = tickEverySecond(tickEverySecond(startDuel(), T0, 10 * 60), T0 + 10 * MINUTE, 2 * 60, "fencing");
+  const before = layout(fenced, now, WIDTH);
+  const after = layout(changeFinish(fenced, now, T0 + 120 * MINUTE), now, WIDTH);
+  // On a 120-minute Duel the Lightning at 12 minutes sits a tenth of the way across.
+  assert.equal(after.lightningX, 900);
+  assert.ok(after.knightsX > before.knightsX, "the Knights move right with the longer Duel");
+  // Twice the minutes per pixel, so the same Gap in clock time is half as many pixels.
+  assert.ok(Math.abs((after.knightsX - after.lightningX) * 2 - (before.knightsX - before.lightningX)) < 1e-9);
+  // The Scorch mark stays at the same clock time behind the Lightning, too.
+  assert.ok(before.scorchX !== null);
+  assert.ok(Math.abs((after.scorchX - after.lightningX) * 2 - (before.scorchX - before.lightningX)) < 1e-9);
+  assert.equal(after.phase, "running");
+});
+
+test("a changed Finish time at or before now is refused and the Duel comes back unchanged", () => {
+  const duel = startDuel();
+  const now = T0 + 10 * MINUTE;
+  assert.equal(changeFinish(duel, now, now), duel);
+  assert.equal(changeFinish(duel, now, now - MINUTE), duel);
+});
+
+test("the Finish time cannot be changed without a Duel or once the Salute or walk-off has begun", () => {
+  const later = T0 + 2 * MINUTE;
+  assert.equal(changeFinish(null, T0, later), null);
+  const salute = step(reachTouche(), { type: "click" });
+  assert.equal(changeFinish(salute, T0 + MINUTE, later), salute);
+  const walkoff = step(startDuel(), { type: "abandon" });
+  assert.equal(changeFinish(walkoff, T0, later), walkoff);
+});
+
+test("moving the Finish time later during Touché resumes the Duel, and the wait at Touché counts as Idle", () => {
+  const now = T0 + 6 * MINUTE;
+  const resumed = changeFinish(reachTouche(), now, T0 + 30 * MINUTE);
+  const view = layout(resumed, now, WIDTH);
+  assert.equal(view.phase, "running");
+  assert.equal(view.lightningX, 800);
+  // The Gap is the full 6 minutes, so one second of Fencing barely moves the Knights.
+  const fenced = layout(tick(resumed, now + 1000, "fencing"), now + 1000, WIDTH);
+  assert.equal(fenced.phase, "running");
+  assert.ok(fenced.knightsX > 995, `knightsX ${fenced.knightsX}`);
+});
