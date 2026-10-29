@@ -186,7 +186,9 @@ PlasmoidItem {
 
         function ask(change) {
             changing = change;
-            picker.value = new Date(changing ? root.duel.finish : Date.now() + 60 * 60 * 1000);
+            // The current Finish time, or one hour from now when there is none or it has passed (Touché).
+            const finish = changing ? root.duel.finish : 0;
+            picker.value = new Date(finish > Date.now() ? finish : Date.now() + 60 * 60 * 1000);
             picker.minimumDate = new Date();
             picker.statusMessage = "";
             show();
