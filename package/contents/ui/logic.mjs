@@ -2,6 +2,9 @@
 // The game rules. Pure: the current time comes in on each event, and the Duel is
 // plain JSON so the widget can save it as-is. No Duel is null.
 
+// Object.assign, not spread: Plasma's QML engine rejects object spread syntax.
+const withPhase = (duel, phase) => Object.assign({}, duel, { phase });
+
 export function step(duel, event) {
   switch (event.type) {
     case "start":
@@ -15,15 +18,15 @@ export function step(duel, event) {
         enGarde: true,
       };
     case "tick":
-      if (duel?.phase === "running" && event.now >= duel.finish) return { ...duel, phase: "touche" };
+      if (duel?.phase === "running" && event.now >= duel.finish) return withPhase(duel, "touche");
       return duel;
     case "click":
-      return duel?.phase === "touche" ? { ...duel, phase: "salute" } : duel;
+      return duel?.phase === "touche" ? withPhase(duel, "salute") : duel;
     case "abandon":
-      return duel === null || duel.phase === "walkoff" ? duel : { ...duel, phase: "walkoff" };
+      return duel === null || duel.phase === "walkoff" ? duel : withPhase(duel, "walkoff");
     case "animationFinished":
       // The QML sends this when the gesture row has played once, and again when the walk-off ends.
-      if (duel?.phase === "salute") return { ...duel, phase: "walkoff" };
+      if (duel?.phase === "salute") return withPhase(duel, "walkoff");
       return duel?.phase === "walkoff" ? null : duel;
     default:
       return duel;
