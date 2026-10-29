@@ -44,7 +44,7 @@ The marker for elapsed clock time. It strikes at the point on the Panel that mat
 _Avoid_: Clock marker, time marker
 
 **Strike**:
-A single flash of Lightning. It happens every 3 minutes, give or take up to 15 seconds at random so it has no fixed rhythm, and whenever the user hovers over the widget.
+A single flash of Lightning. It happens every 3 minutes, give or take up to 15 seconds at random so it has no fixed rhythm, and whenever the user hovers over the widget while the Duel is running. Touché brings one final Strike.
 
 **Scorch mark**:
 The small grey burn left on the ground by the most recent Strike. Only one exists at a time; each Strike replaces the previous mark.

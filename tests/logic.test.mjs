@@ -2,12 +2,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { step, layout } from "../package/contents/ui/logic.mjs";
 
-const MINUTE = 60 * 1000;
+const SECOND = 1000;
+const MINUTE = 60 * SECOND;
 const T0 = Date.UTC(2026, 9, 29, 9, 0, 0);
 const WIDTH = 1000;
 
-const startDuel = (minutes = 60) =>
-  step(null, { type: "start", now: T0, finish: T0 + minutes * MINUTE });
+const startDuel = (minutes = 60, random = 0.5) =>
+  step(null, { type: "start", now: T0, finish: T0 + minutes * MINUTE, random });
 
 test("starting a Duel shows the Knights at the right edge saying En garde", () => {
   const view = layout(startDuel(), T0, WIDTH);
@@ -154,6 +155,82 @@ test("a missing helper counts as Idle: the Knights stop where they are", () => {
   assert.equal(view.animation, "idle");
 });
 
+// The clock times, in seconds since the start, at which the Scorch mark moved: one per Strike.
+const strikeTimes = (duel, seconds, random) => {
+  const times = [];
+  for (let s = 1; s <= seconds; s++) {
+    const before = layout(duel, T0 + s * SECOND, WIDTH).scorchX;
+    duel = step(duel, { type: "tick", now: T0 + s * SECOND, helper: "idle", random: random() });
+    if (layout(duel, T0 + s * SECOND, WIDTH).scorchX !== before) times.push(s);
+  }
+  return times;
+};
+
+test("Strikes come every 3 minutes, give or take up to 15 seconds", () => {
+  assert.equal(layout(startDuel(), T0, WIDTH).scorchX, null);
+  assert.deepEqual(strikeTimes(startDuel(60, 0), 400, () => 0), [165, 330]);
+  assert.deepEqual(strikeTimes(startDuel(60, 0.999), 400, () => 0.999), [195, 390]);
+  const randoms = [0.1, 0.9, 0.5, 0.3, 0.7, 0.0, 1 - 1e-9, 0.2, 0.8, 0.4];
+  let i = 0;
+  const times = strikeTimes(startDuel(60, 0.6), 59 * 60, () => randoms[i++ % randoms.length]);
+  const intervals = times.map((t, n) => t - (times[n - 1] ?? 0));
+  assert.ok(intervals.length >= 18, `${intervals.length} Strikes`);
+  for (const interval of intervals) assert.ok(interval >= 165 && interval <= 195, `interval ${interval} s`);
+  assert.ok(new Set(intervals).size > 1, "no fixed rhythm");
+});
+
+const hover = (duel, now) => step(duel, { type: "hover", now });
+
+test("a hover Strikes at once and leaves the schedule unchanged", () => {
+  const hovered = hover(startDuel(), T0 + MINUTE);
+  assert.equal(layout(hovered, T0 + MINUTE, WIDTH).scorchX, WIDTH * (1 - 1 / 60));
+  assert.deepEqual(strikeTimes(hovered, 400, () => 0.5), [180, 360]);
+});
+
+test("the Scorch mark follows the latest Strike", () => {
+  let duel = hover(tickEverySecond(startDuel(), T0, 60), T0 + MINUTE);
+  duel = tickEverySecond(duel, T0 + MINUTE, 2 * 60);
+  assert.equal(layout(duel, T0 + 3 * MINUTE, WIDTH).scorchX, 950);
+  duel = hover(duel, T0 + 3 * MINUTE + 30 * SECOND);
+  assert.equal(layout(duel, T0 + 4 * MINUTE, WIDTH).scorchX, WIDTH * (1 - 3.5 / 60));
+});
+
+test("Touché brings a final Strike at the left edge, and then hovers Strike no more", () => {
+  const touche = step(hover(startDuel(1), T0 + 30 * SECOND), { type: "tick", now: T0 + 2 * MINUTE, helper: "idle", random: 0.5 });
+  assert.equal(layout(touche, T0 + 2 * MINUTE, WIDTH).scorchX, 0);
+  const view = layout(hover(reachTouche(), T0 + MINUTE), T0 + MINUTE, WIDTH);
+  assert.equal(view.scorchX, 0);
+  assert.equal(hover(touche, T0 + 3 * MINUTE), touche);
+  assert.equal(hover(null, T0), null);
+  // Between the Finish time and the tick that reaches Touché, a hover leaves Touché's Strike to that tick.
+  const due = tickEverySecond(startDuel(1), T0, 59);
+  assert.equal(hover(due, T0 + MINUTE), due);
+});
+
+test("a tick long after the previous one counts as Idle, even when the helper says fencing", () => {
+  // As after suspend, or after the widget was not running: the saved Duel's last tick is old.
+  const idle = tickEverySecond(startDuel(), T0, 60);
+  const resumed = tick(JSON.parse(JSON.stringify(idle)), T0 + 11 * MINUTE, "fencing");
+  const view = layout(resumed, T0 + 11 * MINUTE, WIDTH);
+  assert.equal(view.knightsX, WIDTH);
+  assert.equal(view.animation, "idle");
+  assert.equal(view.text, "En garde");
+  // The next one-second tick is Fencing again.
+  assert.equal(layout(tick(resumed, T0 + 11 * MINUTE + 1000, "fencing"), T0 + 11 * MINUTE + 1000, WIDTH).text, "");
+});
+
+test("a Duel whose Finish time passed while off reaches Touché on its first tick, with the Knights where they were", () => {
+  const fenced = tickEverySecond(tickEverySecond(startDuel(30), T0, 60), T0 + MINUTE, 60, "fencing");
+  const before = layout(fenced, T0 + 2 * MINUTE, WIDTH);
+  const resumed = tick(JSON.parse(JSON.stringify(fenced)), T0 + 3 * 60 * MINUTE, "fencing");
+  const view = layout(resumed, T0 + 3 * 60 * MINUTE, WIDTH);
+  assert.equal(view.phase, "touche");
+  assert.equal(view.text, "Touché");
+  assert.equal(view.knightsX, before.knightsX);
+  // The final Strike leaves the Scorch mark at the left edge.
+  assert.equal(view.scorchX, 0);
+});
+
 test("the Knights never pass the Lightning, whatever the ticks", () => {
   // A small seeded generator (mulberry32), so a failure can be reproduced.
   let seed = 42;
@@ -168,11 +245,69 @@ test("the Knights never pass the Lightning, whatever the ticks", () => {
     let duel = startDuel(30);
     let now = T0;
     while (duel.phase === "running") {
-      now += Math.floor(random() * 5 * MINUTE);
+      // Up to 10 s, so some ticks are long enough to count as Idle and the rest can fence.
+      now += Math.floor(random() * 10 * 1000);
       duel = tick(duel, now, words[Math.floor(random() * 3)]);
       const view = layout(duel, now, WIDTH);
       assert.ok(view.knightsX >= view.lightningX, `run ${run}: Knights at ${view.knightsX}, Lightning at ${view.lightningX}`);
       assert.ok(view.knightsX <= WIDTH);
     }
   }
+});
+
+const changeFinish = (duel, now, finish) => step(duel, { type: "changeFinish", now, finish, random: 0.5 });
+
+test("changing the Finish time rescales the Knights, the Lightning and the Scorch mark together, keeping the Gap in clock time", () => {
+  const now = T0 + 12 * MINUTE;
+  const fenced = tickEverySecond(tickEverySecond(startDuel(), T0, 10 * 60), T0 + 10 * MINUTE, 2 * 60, "fencing");
+  const before = layout(fenced, now, WIDTH);
+  const after = layout(changeFinish(fenced, now, T0 + 120 * MINUTE), now, WIDTH);
+  // On a 120-minute Duel the Lightning at 12 minutes sits a tenth of the way across.
+  assert.equal(after.lightningX, 900);
+  assert.ok(after.knightsX > before.knightsX, "the Knights move right with the longer Duel");
+  // Twice the minutes per pixel, so the same Gap in clock time is half as many pixels.
+  assert.ok(Math.abs((after.knightsX - after.lightningX) * 2 - (before.knightsX - before.lightningX)) < 1e-9);
+  // The Scorch mark stays at the same clock time behind the Lightning, too.
+  assert.ok(before.scorchX !== null);
+  assert.ok(Math.abs((after.scorchX - after.lightningX) * 2 - (before.scorchX - before.lightningX)) < 1e-9);
+  assert.equal(after.phase, "running");
+});
+
+test("a changed Finish time at or before now is refused and the Duel comes back unchanged", () => {
+  const duel = startDuel();
+  const now = T0 + 10 * MINUTE;
+  assert.equal(changeFinish(duel, now, now), duel);
+  assert.equal(changeFinish(duel, now, now - MINUTE), duel);
+});
+
+test("the Finish time cannot be changed without a Duel or once the Salute or walk-off has begun", () => {
+  const later = T0 + 2 * MINUTE;
+  assert.equal(changeFinish(null, T0, later), null);
+  const salute = step(reachTouche(), { type: "click" });
+  assert.equal(changeFinish(salute, T0 + MINUTE, later), salute);
+  const walkoff = step(startDuel(), { type: "abandon" });
+  assert.equal(changeFinish(walkoff, T0, later), walkoff);
+});
+
+test("moving the Finish time later during Touché resumes the Duel, and the wait at Touché counts as Idle", () => {
+  const now = T0 + 6 * MINUTE;
+  const resumed = changeFinish(reachTouche(), now, T0 + 30 * MINUTE);
+  const view = layout(resumed, now, WIDTH);
+  assert.equal(view.phase, "running");
+  assert.equal(view.lightningX, 800);
+  // The Gap is the full 6 minutes, so one second of Fencing barely moves the Knights.
+  const fenced = layout(tick(resumed, now + 1000, "fencing"), now + 1000, WIDTH);
+  assert.equal(fenced.phase, "running");
+  assert.ok(fenced.knightsX > 995, `knightsX ${fenced.knightsX}`);
+});
+
+test("a Duel resumed from Touché starts Idle with a fresh Strike schedule", () => {
+  const now = T0 + 2 * MINUTE;
+  const touche = tickEverySecond(startDuel(1), T0, 60, "fencing");
+  const resumed = changeFinish(touche, now, T0 + 30 * MINUTE);
+  assert.equal(layout(resumed, now, WIDTH).animation, "idle");
+  // The schedule left over from before Touché is long past; the next Strike is 3 minutes after the change.
+  const ticked = tick(resumed, now + SECOND, "idle");
+  assert.equal(ticked.scorch, touche.scorch);
+  assert.equal(ticked.nextStrike, now + 3 * MINUTE);
 });
