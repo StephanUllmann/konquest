@@ -21,6 +21,14 @@ PlasmoidItem {
     property string helper: "missing"
     // The helper runs from the start of a Duel until the walk-off begins.
     readonly property bool helperWanted: duel !== null && duel.phase !== "walkoff"
+    // "" with no Duel, the string default, so loading does not save over the saved Duel before resuming it.
+    readonly property string phase: duel?.phase ?? ""
+
+    function save() { Plasmoid.configuration.duel = JSON.stringify(duel); }
+
+    // Resuming sets duel, which starts the helper and the Timer; the first tick's long wait makes the downtime Idle.
+    Component.onCompleted: duel = JSON.parse(Plasmoid.configuration.duel || "null")
+    onPhaseChanged: save()
 
     preferredRepresentation: fullRepresentation
     toolTipMainText: i18n("Konquest")
@@ -82,6 +90,16 @@ PlasmoidItem {
             root.duel = Logic.step(root.duel, { type: "tick", now: root.now, helper: root.helper, random: Math.random() });
             executable.run(executable.readState);
         }
+    }
+
+    // Saves Fencing progress every 30 s; a restart loses at most that much.
+    Timer {
+        interval: 30 * 1000
+        repeat: true
+        running: root.phase === "running" && root.duel.helper === "fencing"
+        // Also when Fencing starts and stops, so a short stretch of Fencing is not lost.
+        onRunningChanged: root.save()
+        onTriggered: root.save()
     }
 
     fullRepresentation: Item {
@@ -257,6 +275,8 @@ PlasmoidItem {
                 }
                 root.now = now;
                 root.duel = next;
+                // A change while running keeps the phase, so onPhaseChanged would not save it.
+                root.save();
                 finishDialog.close();
             }
         }

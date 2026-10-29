@@ -4,6 +4,8 @@
 
 // While Fencing, the Gap halves over this much clock time.
 const HALVING = 2 * 60 * 1000;
+// Ticks come every second; a longer wait means suspend or downtime, which counts as Idle.
+const SUSPEND_THRESHOLD = 5 * 1000;
 
 // Scheduled Strikes come this often, give or take up to STRIKE_JITTER, so they have no fixed rhythm.
 const STRIKE_EVERY = 3 * 60 * 1000;
@@ -36,8 +38,10 @@ export function step(duel, event) {
     case "tick": {
       if (duel?.phase !== "running") return duel;
       if (event.now >= duel.finish) return strike(withPhase(duel, "touche"), event.now);
-      // helper is the state file's word, or "missing"; anything but "fencing" counts as Idle.
-      const fencing = event.helper === "fencing";
+      // event.helper is the state file's word, or "missing"; anything but "fencing" counts as Idle,
+      // and so does a whole tick after suspend or downtime, whatever the word.
+      const helper = event.now - duel.lastTick > SUSPEND_THRESHOLD ? "idle" : event.helper;
+      const fencing = helper === "fencing";
       const gap = duel.lastTick - duel.start - duel.covered;
       // While Idle covered stays put, so the Gap grows at clock speed.
       const covered = fencing
@@ -46,7 +50,7 @@ export function step(duel, event) {
       const next = Object.assign({}, duel, {
         covered,
         lastTick: event.now,
-        helper: event.helper,
+        helper,
         enGarde: duel.enGarde && !fencing,
       });
       if (event.now < duel.nextStrike) return next;
