@@ -100,9 +100,9 @@ PlasmoidItem {
                 NumberAnimation {
                     target: field
                     property: "walked"
-                    // Until the right Knight is off the left edge, at about 40 logical pixels a second.
+                    // Until the right Knight is off the left edge; always 5 s, however far that is.
                     to: field.view.knightsX
-                    duration: field.view.knightsX * 25
+                    duration: 5000
                     running: field.view.phase === "walkoff"
                     onFinished: root.duel = Logic.step(root.duel, { type: "animationFinished" })
                 }
