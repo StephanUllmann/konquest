@@ -1,0 +1,18 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "Stephan Ullmann"
+            }
+        ],
+        "Category": "Utilities",
+        "Description": "A countdown timer where two knights duel their way across the panel",
+        "Icon": "chronometer",
+        "Id": "io.github.stephanullmann.konquest",
+        "License": "GPL-2.0+",
+        "Name": "Konquest",
+        "Version": "0.1"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

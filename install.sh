@@ -12,3 +12,7 @@ python3 -c 'import evdev' 2>/dev/null ||
     echo "Warning: python3-evdev is missing; install it (e.g. sudo apt install python3-evdev) or the Knights will never Fence." >&2
 id -nG | grep -qw input ||
     echo "Warning: $(id -un) is not in the 'input' group, so the typing helper cannot read the keyboard (sudo usermod -aG input $(id -un), then log in again)." >&2
+
+# The widget: upgrade in place, or install it the first time.
+kpackagetool6 -t Plasma/Applet --upgrade package/ >/dev/null ||
+    kpackagetool6 -t Plasma/Applet --install package/
