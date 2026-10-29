@@ -14,6 +14,17 @@ export function step(duel, event) {
         phase: "running",
         enGarde: true,
       };
+    case "tick":
+      if (duel?.phase === "running" && event.now >= duel.finish) return { ...duel, phase: "touche" };
+      return duel;
+    case "click":
+      return duel?.phase === "touche" ? { ...duel, phase: "salute" } : duel;
+    case "abandon":
+      return duel === null || duel.phase === "walkoff" ? duel : { ...duel, phase: "walkoff" };
+    case "animationFinished":
+      // The QML sends this when the gesture row has played once, and again when the walk-off ends.
+      if (duel?.phase === "salute") return { ...duel, phase: "walkoff" };
+      return duel?.phase === "walkoff" ? null : duel;
     default:
       return duel;
   }
@@ -27,8 +38,9 @@ export function layout(duel, now, panelWidth) {
   return {
     phase: duel.phase,
     knightsX: x(duel.covered),
-    lightningX: x(now - duel.start),
-    animation: "idle",
-    text: duel.enGarde ? "En garde" : "",
+    // Clamped so the Lightning sits at the left edge from the Finish time on.
+    lightningX: x(Math.min(now - duel.start, total)),
+    animation: { salute: "gesture", walkoff: "walk" }[duel.phase] ?? "idle",
+    text: duel.phase === "touche" ? "Touché" : duel.phase === "running" && duel.enGarde ? "En garde" : "",
   };
 }
